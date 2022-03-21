@@ -1,5 +1,5 @@
 /*
-    Boosted Staking
+    Boosted Staking System
     Copyright (C) 2022 Ever Surf
 
     This program is free software: you can redistribute it and/or modify
@@ -27,6 +27,7 @@ import "../common/Modifiers.sol";
 import "./interfaces/IConcierge.sol";
 import "../libraries/FormatLib.sol";
 
+/// @notice DeBot that works as a client for Boosted Staking.
 contract ExtraClient is Debot, Debug, Upgradable, Modifiers, IOnDialog, IOnStake, IOnGetStakes {
     
     bytes m_icon;
