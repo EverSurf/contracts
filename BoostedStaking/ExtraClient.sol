@@ -20,12 +20,12 @@ pragma AbiHeader expire;
 pragma AbiHeader time;
 pragma AbiHeader pubkey;
 import "https://raw.githubusercontent.com/tonlabs/debots/main/Debot.sol";
-import "DeBotInterfaces.sol";
 import "../common/Debug.sol";
 import "../common/Upgradable.sol";
 import "../common/Modifiers.sol";
 import "./interfaces/IConcierge.sol";
 import "../libraries/FormatLib.sol";
+import "DeBotInterfaces.sol";
 
 /// @notice DeBot that works as a client for Boosted Staking.
 contract ExtraClient is Debot, Debug, Upgradable, Modifiers, IOnDialog, IOnStake, IOnGetStakes {
