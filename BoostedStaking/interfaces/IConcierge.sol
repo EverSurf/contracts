@@ -18,6 +18,7 @@
 pragma ton-solidity >= 0.47.0;
 import "../libraries/ExtraLib.sol";
 
+/// @dev Operation statuses from Concierge debot.
 enum StakeStatus {
     Success,
     LowBalance,
@@ -38,6 +39,7 @@ enum WithdrawStatus {
     Canceled
 }
 
+/// @notice Info about one boosted stake.
 struct ExtraStake {
     mapping(address => uint64) parts;
     uint64 totalAmount;
@@ -49,26 +51,51 @@ struct ExtraStake {
     ExtraLib.PeriodInfo period;
 }
 
+/// @title Boosted Staking API interface
 interface IConcierge {
+    /// Allows client debots to gather paremeters from user for boosted stake. 
+    /// See IOnDialog for return arguments.
     function invokeDialog() external;
+    /// Send boosted stake.
+    /// @dev signature argument is not used now and can be empty.
+    /// @param stake Stake amount in nanoevrs.
+    /// @param secs Stake lock period in seconds. Note: on of the predefined 
+    /// values from ExtraLib.Period enum (converted to seconds).
+    /// @param signature Client signature. Note: not used.
+    /// @param clientKey Public key which should be used to check signature. 
+    /// Note: not used.
+    /// @dev See IOnStake for return arguments.
     function invokeStake(uint64 stake, uint32 secs, bytes signature, uint256 clientKey) external;
+    /// Return user boosted stakes.
+    /// @dev See IOnGetStakes for return arguments.
     function invokeGetStakes() external;
+    /// Allows to return user stake.
+    /// @param extraAccount Address of user boosted stake account.
     function invokeWithdraw(address extraAccount) external;
 }
 
 interface IOnDialog {
+    /// Return arguments for invokeDialog call.
+    /// @param stake Stake value in nanoevers entered by the user.
+    /// @param secs Stake lock period in seconds.
     function onDialog(uint64 stake, uint32 secs) external;
 }
 
 interface IOnStake {
+    /// Return arguments for invokeStake call.
+    /// @param status Status of operation.
     function onStake(StakeStatus status) external;
 }
 
 interface IOnGetStakes {
+    /// Return arguments for invokeGetStakes call.
+    /// @param stakes List of user boosted stakes.
     function onGetStakes(ExtraStake[] stakes) external;
 }
 
 interface IOnWithdraw {
+    /// Return arguments for invokeWithdraw call.\
+    /// @param status Status of withdraw operation.
     function onWithdraw(WithdrawStatus status) external;
 }
 
