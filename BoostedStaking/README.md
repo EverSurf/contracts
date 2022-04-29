@@ -59,3 +59,7 @@ Note: Concierge debot address - `0:c99a2ea5049c98c5c96273bbd2df5a75893724f187cb2
 ```
 
 Note: Extra Service address - `0:36443296ce4c9a6f174cc20f9644e6a7f1f5f1dd0542d58e82ee544b3252b1b2`
+
+## How to use Boosted Staking from Web
+
+- Run WASM debot browser with [this manifest](./manifests/stake.json)

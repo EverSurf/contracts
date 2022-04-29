@@ -1,0 +1,29 @@
+{
+    "version": 0,
+    "debotAddress": "0:c99a2ea5049c98c5c96273bbd2df5a75893724f187cb2a5df900c19499a21ccc",
+    "initMethod": "invokeStake",
+    "initArgs": {
+        "stake": "${amount}",
+        "secs": "${secs}",
+        "signature": "",
+        "clientKey": 0
+    },
+    "abi": {
+        "ABI version": 2,
+        "header": ["time"],
+        "functions": [
+            {
+			"name": "onStake",
+			"inputs": [
+				{"name":"status","type":"uint8"}
+			],
+			"outputs": [
+			]
+		    }
+        ],
+        "data": [],
+        "events": []
+    },
+    "quiet": true,
+    "chain": []
+  }
