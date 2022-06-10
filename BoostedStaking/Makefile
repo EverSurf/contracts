@@ -1,4 +1,4 @@
-tvcs = ExtraClient.tvc Concierge.tvc
+tvcs = ExtraClient.tvc Concierge.tvc ExtraAccount.tvc
 all: $(tvcs)
 
 $(tvcs): %.tvc: %.sol
