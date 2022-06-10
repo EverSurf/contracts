@@ -32,11 +32,15 @@ interface IExtraService {
     /// Remark: It's a part of authorization feature - allow to make boosted stakes
     /// to whitelisted clients only. in ver 1.0 Everyone can make a boosted stake.
     /// @param clientKey Not used in Boosted Staking Program 1.0.
-    /// Remark: Client public key used to check @signature argument.
+    /// Remark: Client public key used to check signature argument.
     function stake(
         mapping(address => uint64) depools,
         ExtraLib.Period period,
         bytes signature,
         uint256 clientKey
     ) external;
+
+    // Getters
+    function getPeriods() external returns (mapping(uint32 => ExtraLib.PeriodInfo) periods);
+    function getStats() external view returns (ExtraLib.Statistics stats);
 }
