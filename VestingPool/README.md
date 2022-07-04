@@ -103,6 +103,10 @@ Result: {
 }
 ```
 
+#### 6. Pool is ready
+
+Go to [vesting.surf](https://vesting.surf) to see your pools.
+
 ### Remark for multisig wallet with several custodians
 
 Only one custodian should follow the instruction above and generate `transId`. Other custodians should confirm this `transId` through `confirmTransaction` function.
