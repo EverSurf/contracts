@@ -20,7 +20,7 @@ Vesting Service address:
 
 #### 2. Download [VestingService.abi.json](https://github.com/EverSurf/contracts/tree/main/VestingPool/build/VestingService.abi.json)
 
-#### 3. Open terminal and create payload for wallet transaction:
+#### 3. Create payload:
 
 ```bash
 tonos-cli -j body createPool '{"amount":<amount_nanoevers>,"cliffMonths":<number>,"vestingMonths":<number>,"recipient":"<everscale address>","claimers":[<pubkey>, ...]}' --abi VestingService.abi.json
@@ -49,7 +49,7 @@ tonos-cli -j -u net.ton.dev body createPool '{"amount":1000000000000000,"cliffMo
 }
 ```
 
-#### 4. Calculate execution fee for pool creation:
+#### 4. Calculate execution fee:
 
 ```bash
 tonos-cli -j -u <network> run <vesting_service_address> getCreateFee '{"vestingMonths":<months>}' --abi VestingService.abi.json
@@ -71,7 +71,9 @@ tonos-cli -j -u net.ton.dev run 0:e812f1f1fc2ca1caadacc4460c1265e43089f762f86195
 
 The command returns execution fee in nanoevers.
 
-#### 5. Transfer funds + fee to a Vesting Service and attach payload created in step 3.
+#### 5. Create pool
+
+Transfer funds + execution fee (step 4) and attach payload (step 3).
 
 Command example for the multisig wallet:
 
