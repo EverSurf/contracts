@@ -1,0 +1,71 @@
+{
+	"ABI version": 2,
+	"version": "2.2",
+	"header": ["pubkey", "time", "expire"],
+	"functions": [
+		{
+			"name": "constructor",
+			"inputs": [
+				{"name":"poolImage","type":"cell"}
+			],
+			"outputs": [
+			]
+		},
+		{
+			"name": "createPool",
+			"inputs": [
+				{"name":"amount","type":"uint128"},
+				{"name":"cliffMonths","type":"uint8"},
+				{"name":"vestingMonths","type":"uint8"},
+				{"name":"recipient","type":"address"},
+				{"name":"claimers","type":"uint256[]"}
+			],
+			"outputs": [
+			]
+		},
+		{
+			"name": "getPoolCodeHash",
+			"inputs": [
+			],
+			"outputs": [
+				{"name":"codeHash","type":"uint256"}
+			]
+		},
+		{
+			"name": "getCreateFee",
+			"inputs": [
+				{"name":"vestingMonths","type":"uint8"}
+			],
+			"outputs": [
+				{"name":"fee","type":"uint128"}
+			]
+		},
+		{
+			"name": "onPoolActivated",
+			"inputs": [
+			],
+			"outputs": [
+			]
+		},
+		{
+			"name": "m_onbounceMap",
+			"inputs": [
+			],
+			"outputs": [
+				{"name":"m_onbounceMap","type":"map(address,address)"}
+			]
+		}
+	],
+	"data": [
+	],
+	"events": [
+	],
+	"fields": [
+		{"name":"_pubkey","type":"uint256"},
+		{"name":"_timestamp","type":"uint64"},
+		{"name":"_constructorFlag","type":"bool"},
+		{"name":"m_poolCode","type":"cell"},
+		{"name":"m_nextId","type":"uint256"},
+		{"name":"m_onbounceMap","type":"map(address,address)"}
+	]
+}
