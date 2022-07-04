@@ -18,7 +18,7 @@ Vesting Service address:
 
 1. Install tonos-cli using [everdev](https://github.com/tonlabs/everdev) or build from [source](https://github.com/tonlabs/tonos-cli)
 
-2. Download [VestingService.abi.json](https://github.com/EverSurf/contracts/tree/main/VestingPool)
+2. Download [VestingService.abi.json](https://github.com/EverSurf/contracts/tree/main/VestingPool/build/VestingService.abi.json)
 
 3. Open terminal and create payload for wallet transaction:
 
