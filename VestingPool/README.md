@@ -103,7 +103,7 @@ Result: {
 }
 ```
 
-#### 6. Pool is ready
+#### 6. Vesting Pool is ready
 
 Go to [vesting.surf](https://vesting.surf) to see your pools.
 
