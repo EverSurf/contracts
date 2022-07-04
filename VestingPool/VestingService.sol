@@ -22,24 +22,21 @@ pragma AbiHeader pubkey;
 import "./interfaces/IVestingService.sol";
 import "VestingPool.sol";
 import "Modifiers.sol";
+import "VestLib.sol";
 
-contract VestingService is IVestingService, Modifiers {
-    uint128 constant FEE_CLAIM = 0.1 ever;
-    uint128 constant FEE_CREATE = 0.1 ever;
-    uint128 constant CONSTRUCTOR_GAS = 0.1 ever;
-    uint256 constant MAX_CLAIMERS = 10;
-
+contract VestingService is IVestingService, IOnPoolActivated, Modifiers {
     uint constant ERR_TOO_MANY_CLAIMERS = 201;
     uint constant ERR_NO_CLAIMERS = 202;
     uint constant ERR_INVALID_RECIPIENT = 203;
 
     TvmCell m_poolCode;
     uint256 m_nextId;
+    mapping(address => address) public m_onbounceMap;
 
 
     modifier checkMinMaxClaimers(uint256[] claimers) {
         require(claimers.length > 0, ERR_NO_CLAIMERS);
-        require(claimers.length <= MAX_CLAIMERS, ERR_TOO_MANY_CLAIMERS);
+        require(claimers.length <= VestLib.MAX_CLAIMERS, ERR_TOO_MANY_CLAIMERS);
         _;
     }
 
@@ -69,28 +66,25 @@ contract VestingService is IVestingService, Modifiers {
         contractOnly
         validRecipient(recipient)
         checkMinMaxClaimers(claimers)
-        minValue(amount + calcCreateGasFee(vestingMonths))
+        minValue(amount + VestLib.calcCreateGasFee(vestingMonths))
     {
         mapping(uint256 => bool) claimersMap;
         for(uint256 pubkey: claimers) {
             claimersMap[pubkey] = true;
         }
-        new VestingPool{
+        address pool = new VestingPool{
             value: 0,
             flag: 64,
             bounce: true,
             stateInit: buildPoolImage(msg.sender, m_nextId)
-        }(msg.sender, amount, cliffMonths, vestingMonths, recipient, claimersMap);
+        }(amount, cliffMonths, vestingMonths, recipient, claimersMap);
         m_nextId++;
+        m_onbounceMap[pool] = msg.sender;
     }
 
     //
     // Internals
     //
-
-    function calcCreateGasFee(uint8 vestingMonths) private pure returns (uint128) {
-        return FEE_CREATE + vestingMonths * FEE_CLAIM + CONSTRUCTOR_GAS;
-    }
 
     function buildPoolImage(
         address creator,
@@ -116,18 +110,30 @@ contract VestingService is IVestingService, Modifiers {
     }
 
     function getCreateFee(uint8 vestingMonths) external override pure returns (uint128 fee) {
-        fee = calcCreateGasFee(vestingMonths);
+        fee = VestLib.calcCreateGasFee(vestingMonths);
     }
 
     //
     // OnBounce
     //
 
-    onBounce(TvmSlice slice) external pure {
+    onBounce(TvmSlice slice) external {
         uint32 functionId = slice.decode(uint32);
         if (functionId == tvm.functionId(VestingPool)) {
-            address creator = slice.decode(address);
-            creator.transfer(0, false, 64);
+            optional(address) entry = m_onbounceMap.fetch(msg.sender);
+            if (entry.hasValue()) {
+                delete m_onbounceMap[msg.sender];
+                address poolCreator = entry.get();
+                poolCreator.transfer(0, false, 64);
+            }
         }
     }
+
+    function onPoolActivated() external override {
+        optional(address) entry = m_onbounceMap.fetch(msg.sender);
+        if (entry.hasValue()) {
+            delete m_onbounceMap[msg.sender];
+        }
+    }
+
 }

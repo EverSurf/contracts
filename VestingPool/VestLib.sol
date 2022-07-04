@@ -15,22 +15,20 @@
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-pragma ton-solidity >=0.61.0;
-interface IVestingPool {
-    function claim(uint poolId) external;
-    function get() external view returns(
-        uint poolId, 
-        address poolCreator,
-        uint32 createdAt,
-        address recipient,
-        uint32 cliffEnd,
-        uint32 vestingEnd,
-        uint128 totalAmount,
-        uint128 remainingAmount,
-        uint128 unlockedAmount
-        );
-}
+pragma ton-solidity >= 0.61.0;
 
-interface IOnPoolActivated {
-    function onPoolActivated() external;
+library VestLib {
+    uint128 constant FEE_CLAIM = 0.1 ever;
+    uint128 constant FEE_CREATE = 0.1 ever;
+    uint128 constant CONSTRUCTOR_GAS = 0.1 ever;
+    uint128 constant STORAGE_FEE = 1 ever;
+    uint256 constant MAX_CLAIMERS = 10;
+
+    function calcCreateGasFee(uint8 vestingMonths) public returns (uint128) {
+        return FEE_CREATE + calcPoolConstructorFee(vestingMonths);
+    }
+
+    function calcPoolConstructorFee(uint8 vestingMonths) public returns (uint128) {
+        return vestingMonths * FEE_CLAIM + CONSTRUCTOR_GAS + STORAGE_FEE;
+    }
 }

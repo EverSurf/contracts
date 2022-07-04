@@ -20,6 +20,7 @@ pragma AbiHeader expire;
 pragma AbiHeader time;
 pragma AbiHeader pubkey;
 import "Modifiers.sol";
+import "VestLib.sol";
 import "./interfaces/IVestingPool.sol";
 
 contract VestingPool is IVestingPool, Modifiers {
@@ -38,27 +39,28 @@ contract VestingPool is IVestingPool, Modifiers {
     mapping(uint256 => bool) m_claimers;
 
     constructor(
-        address poolCreator,
         uint128 amount,
         uint8 cliffMonths,
         uint8 vestingMonths,
         address recipient,
         mapping(uint256 => bool) claimers
-    ) public contractOnly minValue(amount + CONSTRUCTOR_GAS) {
-        // Used in onBounce handler in VestingService
-        poolCreator;
+    ) public contractOnly minValue(amount + VestLib.calcPoolConstructorFee(vestingMonths)) {
         address service = tvm.codeSalt(tvm.code()).get().toSlice().decode(address);
         require(service == msg.sender, ERR_INVALID_SENDER);
 
         m_createdAt = uint32(now);
-        m_cliffEnd = m_createdAt + cliffMonths * 30 days;
-        m_vestingEnd = m_cliffEnd + vestingMonths * 30 days;
+        m_cliffEnd = m_createdAt + uint32(cliffMonths) * 30 days;
+        m_vestingEnd = m_cliffEnd + uint32(vestingMonths) * 30 days;
         m_totalAmount = amount;
         m_remainingAmount = m_totalAmount;
         m_recipient = recipient;
         m_claimers = claimers;
         m_vestingFrom = m_cliffEnd;
         m_vestingAmount = vestingMonths > 0 ? m_totalAmount / vestingMonths : m_totalAmount;
+
+        IOnPoolActivated(service).onPoolActivated{
+            value: 0.03 ever, bounce: false, flag: 0
+        }();
     }
 
     //
