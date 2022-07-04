@@ -8,19 +8,19 @@
 
 - tvm_linker 0.15.42
 
-## How to create Vesting Pool 
+# How to create Vesting Pool 
 
 Vesting Service address:
 
     DEVNET 0:e812f1f1fc2ca1caadacc4460c1265e43089f762f861950ca280c4179f2aa4d1
 
-### via TONOS-CLI
+## via TONOS-CLI
 
-#### 1. Install tonos-cli using [everdev](https://github.com/tonlabs/everdev) or build from [source](https://github.com/tonlabs/tonos-cli)
+### 1. Install tonos-cli using [everdev](https://github.com/tonlabs/everdev) or build from [source](https://github.com/tonlabs/tonos-cli)
 
-#### 2. Download [VestingService.abi.json](https://github.com/EverSurf/contracts/tree/main/VestingPool/build/VestingService.abi.json)
+### 2. Download [VestingService.abi.json](https://raw.githubusercontent.com/EverSurf/contracts/main/VestingPool/build/VestingService.abi.json) and place in your working directory
 
-#### 3. Create payload:
+### 3. Create payload:
 
 ```bash
 tonos-cli -j body createPool '{"amount":<amount_nanoevers>,"cliffMonths":<number>,"vestingMonths":<number>,"recipient":"<everscale address>","claimers":[<pubkey>, ...]}' --abi VestingService.abi.json
@@ -29,13 +29,13 @@ where:
 
 *amount* - total vesting funds in nanoevers;
 
-*cliffMonths* - cliff period, in months; can be 0;
+*cliffMonths* - cliff period, in months; can be 0 - in that case the first part of the vesting funds will be unlocked after the first month;
 
-*vestingMonths* - total vesting period, in months; each month Vestng Pool will unlock funds equal to `amount/vestingMonths`; can be 0, so all vesting funds will be available right after cliff period;
+*vestingMonths* - total vesting period, in months; each month Vestng Pool will unlock funds equal to `amount/vestingMonths`; can be 0 - in that case all vesting funds will be available right after cliff period;
 
 *recipient* - everscale address of account, which will receive vesting funds;
 
-*claimers* - array of public keys; external inbound message signed by one of this keys can trigger vesting transfer to a recipient address; cannot be empty;
+*claimers* - array of public keys; external inbound message signed by one of these keys can trigger vesting transfer to the recipient address; cannot be empty;
 
 Example:
 
@@ -49,7 +49,7 @@ tonos-cli -j -u net.ton.dev body createPool '{"amount":1000000000000000,"cliffMo
 }
 ```
 
-#### 4. Calculate execution fee:
+### 4. Calculate execution fee:
 
 ```bash
 tonos-cli -j -u <network> run <vesting_service_address> getCreateFee '{"vestingMonths":<months>}' --abi VestingService.abi.json
@@ -71,11 +71,11 @@ tonos-cli -j -u net.ton.dev run 0:e812f1f1fc2ca1caadacc4460c1265e43089f762f86195
 
 The command returns execution fee in nanoevers.
 
-#### 5. Create pool
+### 5. Create pool
 
-Transfer funds + execution fee (step 4) and attach payload (step 3).
+Transfer funds + execution fee ([step 4](#4-calculate-execution-fee)) and attach payload ([step 3](#3-create-payload)).
 
-Command example for the multisig wallet:
+Command example for multisig wallet:
 
 ```bash
 tonos-cli -j -u <network> call <multisig_address> submitTransaction '{"dest":<vesting_service_address>,"value":<amount_+_fee>,"bounce":true,"allBalance":false,"payload":"<payload>"}' --abi SafeMultisigWallet.abi.json --sign <seed_phrase>
@@ -93,6 +93,8 @@ where:
 
 *payload* - message body created in `tonos-cli body createPool` command.
 
+> **Note**: Do not forget to download the ABI file for the multisig you're working with (e.g. [SafeMultisigWallet.abi.json](https://raw.githubusercontent.com/tonlabs/ton-labs-contracts/master/solidity/safemultisig/SafeMultisigWallet.abi.json)) and place it in your working directory.
+
 Example:
 
 ```bash
@@ -103,10 +105,10 @@ Result: {
 }
 ```
 
-#### 6. Vesting Pool is ready
+### 6. Vesting Pool is ready
 
 Go to [vesting.surf](https://vesting.surf) to see your pools.
 
 ### Remark for multisig wallet with several custodians
 
-Only one custodian should follow the instruction above and generate `transId`. Other custodians should confirm this `transId` through `confirmTransaction` function.
+Only one custodian should follow the instruction above and generate `transId`. Other custodians should confirm this `transId` through [`confirmTransaction`](https://github.com/tonlabs/ton-labs-contracts/tree/master/solidity/safemultisig#47-create-transaction-confirmation-online) function.
