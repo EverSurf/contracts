@@ -4,7 +4,7 @@
 
 ## Prerequisites
 
-- TON-Solidity Compiler 0.62.0
+- TON-Solidity Compiler 0.63.0
 
 - tvm_linker 0.15.55
 

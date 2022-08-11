@@ -15,14 +15,14 @@
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-pragma ton-solidity ^0.62.0;
+pragma ton-solidity ^0.63.0;
 pragma AbiHeader expire;
 pragma AbiHeader pubkey;
 pragma AbiHeader time;
 
 /// @title Multisignature wallet 2.0 with setcode.
 /// @author Ever Surf
-contract Multisig2 {
+contract MultisigWallet {
 
     /*
      *  Storage
@@ -81,8 +81,6 @@ contract Multisig2 {
     uint64  constant EXPIRATION_TIME = 3600; // lifetime is 1 hour
 
     uint8   constant MAX_CUSTODIAN_COUNT = 32;
-    // TODO remove
-    uint128 constant MIN_VALUE = 1e6;
 
     uint    constant MAX_CLEANUP_TXNS = 40;
 
@@ -227,11 +225,11 @@ contract Multisig2 {
     }
 
     /// @dev Returns transfer flags according to input value and `allBalance` flag.
-    function _getSendFlags(uint128 value, bool allBalance) inline private pure returns (uint8, uint128) {        
+    function _getSendFlags(uint128 value, bool allBalance) inline private pure returns (uint8, uint128) {
         uint8 flags = FLAG_IGNORE_ERRORS | FLAG_PAY_FWD_FEE_FROM_BALANCE;
         if (allBalance) {
             flags = FLAG_IGNORE_ERRORS | FLAG_SEND_ALL_REMAINING;
-            value = uint128(address(this).balance);
+            value = 0;
         }
         return (flags, value);
     }
@@ -257,7 +255,7 @@ contract Multisig2 {
         require(m_custodianCount == 1, 108);
         require(msg.pubkey() == m_ownerKey, 100);
         tvm.accept();
-        dest.transfer(value, bounce, flags, payload);
+        dest.transfer(value, bounce, flags | FLAG_IGNORE_ERRORS, payload);
     }
 
     /// @dev Allows custodian to submit and confirm new transaction.
@@ -277,8 +275,6 @@ contract Multisig2 {
     {
         uint256 senderKey = msg.pubkey();
         uint8 index = _findCustodian(senderKey);
-        // TODO remove if unused
-        require(value >= MIN_VALUE, 107);
         _removeExpiredTransactions();
         require(_getMaskValue(m_requestsMask, index) < MAX_QUEUED_REQUESTS, 113);
         tvm.accept();
@@ -286,7 +282,7 @@ contract Multisig2 {
         (uint8 flags, uint128 realValue) = _getSendFlags(value, allBalance);
         uint8 requiredSigns = m_defaultRequiredConfirmations;
 
-        if (requiredSigns == 1) {
+        if (requiredSigns <= 1) {
             dest.transfer(realValue, bounce, flags, payload);
             return 0;
         } else {
@@ -307,7 +303,7 @@ contract Multisig2 {
         _removeExpiredTransactions();
         optional(Transaction) txnOpt = m_transactions.fetch(transactionId);
         require(txnOpt.hasValue(), 102);
-        Transaction txn;
+        Transaction txn = txnOpt.get();
         require(!_isConfirmed(txn.confirmationsMask, index), 103);
         tvm.accept();
         _confirmTransaction(transactionId, txn, index);
@@ -321,7 +317,11 @@ contract Multisig2 {
     /// @param transactionId Transaction id to confirm.
     /// @param txn Transaction object to confirm.
     /// @param custodianIndex Index of custodian.
-    function _confirmTransaction(uint64 transactionId, Transaction txn, uint8 custodianIndex) inline private {
+    function _confirmTransaction(
+        uint64 transactionId,
+        Transaction txn,
+        uint8 custodianIndex
+    ) inline private {
         if ((txn.signsReceived + 1) >= txn.signsRequired) {
             txn.dest.transfer(txn.value, txn.bounce, txn.sendFlags, txn.payload);
             m_requestsMask = _decMaskValue(m_requestsMask, txn.index);
@@ -349,11 +349,10 @@ contract Multisig2 {
                 // transaction is expired, remove it
                 m_requestsMask = _decMaskValue(m_requestsMask, txn.index);
                 delete m_transactions[trId];
-
                 optional(uint64, Transaction) nextTxn = m_transactions.next(trId);
                 if (nextTxn.hasValue()) {
                     (trId, ) = nextTxn.get();
-                    needCleanup =  trId <= marker;
+                    needCleanup = trId <= marker;
                 } else {
                     needCleanup = false;
                 }
@@ -390,7 +389,7 @@ contract Multisig2 {
         maxQueuedTransactions = MAX_QUEUED_REQUESTS;
         maxCustodianCount = MAX_CUSTODIAN_COUNT;
         expirationTime = EXPIRATION_TIME;
-        minValue = MIN_VALUE;
+        minValue = 0;
         requiredTxnConfirms = m_defaultRequiredConfirmations;
         requiredUpdConfirms = m_requiredVotes;
     }
@@ -540,14 +539,14 @@ contract Multisig2 {
         if (needCleanup) {
             tvm.accept();
             while (needCleanup) {
-                // transaction is expired, remove it
+                // request is expired, remove it
                 _deleteUpdateRequest(updateId, req.index);
                 optional(uint64, UpdateRequest) reqOpt = m_updateRequests.next(updateId);
                 if (reqOpt.hasValue()) {
                     (updateId, req) = reqOpt.get();
                     needCleanup = updateId <= marker;
                 } else {
-                    needCleanup = false;    
+                    needCleanup = false;
                 }
             }
             tvm.commit();
