@@ -15,7 +15,7 @@
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-pragma ton-solidity ^0.63.0;
+pragma ton-solidity ^0.64.0;
 pragma AbiHeader expire;
 pragma AbiHeader pubkey;
 pragma AbiHeader time;
@@ -41,9 +41,9 @@ contract MultisigWallet {
         uint256 creator;
         // Index of custodian.
         uint8 index;
-        // Destination address of gram transfer.
+        // Recipient address.
         address dest;
-        // Amount of nanograms to transfer.
+        // Amount of nanoevers to transfer.
         uint128 value;
         // Flags for sending internal message (see SENDRAWMSG in TVM spec).
         uint16 sendFlags;
@@ -51,6 +51,8 @@ contract MultisigWallet {
         TvmCell payload;
         // Bounce flag for header of outbound internal message.
         bool bounce;
+        // Smart contract image to deploy with internal message.
+        optional(TvmCell) stateInit;
     }
 
     /// Request for code update
@@ -65,23 +67,22 @@ contract MultisigWallet {
         uint32 confirmationsMask;
         // public key of custodian submitted request
         uint256 creator;
-        // hash from code's tree of cells
-        uint256 codeHash;
-        // array with new wallet custodians
-        uint256[] custodians;
-        // Default number of confirmations required to execute transaction
-        uint8 reqConfirms;
+        // New wallet code hash or null if wallet code should not be changed.
+        optional(uint256) codeHash;
+        // New wallet custodians (pubkeys)
+        optional(uint256[]) custodians;
+        // New number of confirmations required to execute transaction
+        optional(uint8) reqConfirms;
+        // New unconfirmed transaction lifetime in seconds.
+        optional(uint64) lifetime;
     }
 
     /*
      *  Constants
      */
     uint8   constant MAX_QUEUED_REQUESTS = 5;
-    // TODO declare as variable
-    uint64  constant EXPIRATION_TIME = 3600; // lifetime is 1 hour
-
+    uint64  constant DEFAULT_LIFETIME = 3600; // lifetime is 1 hour
     uint8   constant MAX_CUSTODIAN_COUNT = 32;
-
     uint    constant MAX_CLEANUP_TXNS = 40;
 
     // Send flags.
@@ -99,9 +100,9 @@ contract MultisigWallet {
     uint256 m_ownerKey;
     // Binary mask with custodian requests (max 32 custodians).
     uint256 m_requestsMask;
-    // Dictionary of queued transactions waiting confirmations.
+    // Dictionary of queued transactions waiting for confirmations.
     mapping(uint64 => Transaction) m_transactions;
-    // Set of custodians, initiated in constructor, but values can be changed later in code.
+    // Set of custodians, initiated in constructor, but they can be changed later.
     mapping(uint256 => uint8) m_custodians; // pub_key -> custodian_index
     // Read-only custodian count, initiated in constructor.
     uint8 m_custodianCount;
@@ -110,10 +111,12 @@ contract MultisigWallet {
     // Binary mask for storing update request counts from custodians.
     // Every custodian can submit only one request.
     uint32 m_updateRequestsMask;
-    // Number of custodian confirmations for updating code
+    // Minimal number of confirmations required to upgrade wallet code.
     uint8 m_requiredVotes;
-    // Default number of confirmations needed to execute transaction.
+    // Minimal number of confirmations needed to execute transaction.
     uint8 m_defaultRequiredConfirmations;
+    // Unconfirmed transaction lifetime, in seconds.
+    uint64 m_lifetime;
 
     /*
     Exception codes:
@@ -131,6 +134,9 @@ contract MultisigWallet {
     120 - update request is not confirmed;
     121 - payload size is too big;
     122 - object is expired;
+    123 - invalid lifetime;
+    124 - new custodians are not defined; 
+    125 - `code` argument should be null;
     */
 
     /*
@@ -138,30 +144,54 @@ contract MultisigWallet {
      */
 
     /// @dev Internal function called from constructor to initialize custodians.
-    function _initialize(uint256[] owners, uint8 reqConfirms) inline private {
-        uint8 ownerCount = 0;
-        m_ownerKey = owners[0];
-
-        uint256 len = owners.length;
-        for (uint256 i = 0; (i < len && ownerCount < MAX_CUSTODIAN_COUNT); i++) {
-            uint256 key = owners[i];
-            if (!m_custodians.exists(key)) {
-                m_custodians[key] = ownerCount++;
+    function _initialize(
+        optional(uint256[]) ownersOpt,
+        optional(uint8) reqConfirmsOpt,
+        optional(uint64) lifetimeOpt
+    ) inline private {
+        if (ownersOpt.hasValue()) {
+            uint8 ownerCount = 0;
+            uint256[] owners = ownersOpt.get();
+            m_ownerKey = owners[0];
+            uint256 len = owners.length;
+            delete m_custodians;
+            for (uint256 i = 0; (i < len && ownerCount < MAX_CUSTODIAN_COUNT); i++) {
+                uint256 key = owners[i];
+                if (!m_custodians.exists(key)) {
+                    m_custodians[key] = ownerCount++;
+                }
             }
+            m_custodianCount = ownerCount;
         }
-        m_defaultRequiredConfirmations = ownerCount <= reqConfirms ? ownerCount : reqConfirms;
-        m_requiredVotes = (ownerCount <= 2) ? ownerCount : ((ownerCount * 2 + 1) / 3);
-        m_custodianCount = ownerCount;
+
+        if (reqConfirmsOpt.hasValue()) {
+            m_defaultRequiredConfirmations = math.min(m_custodianCount, reqConfirmsOpt.get());
+        }
+
+        m_requiredVotes = (m_custodianCount <= 2) ? m_custodianCount : ((m_custodianCount * 2 + 1) / 3);
+
+        if (lifetimeOpt.hasValue()) {
+            uint64 newLifetime = lifetimeOpt.get();
+            if (newLifetime == 0) {
+                newLifetime = DEFAULT_LIFETIME;
+            }
+            m_lifetime =  newLifetime;
+        }
     }
 
     /// @dev Contract constructor.
     /// @param owners Array of custodian keys.
-    /// @param reqConfirms Default number of confirmations required for executing transaction.
-    constructor(uint256[] owners, uint8 reqConfirms) public {
-        require(msg.pubkey() == tvm.pubkey(), 100);
+    /// @param reqConfirms Minimal number of confirmations required for executing transaction.
+    /// @param lifetime Unconfirmed transaction lifetime, in seconds.
+    constructor(uint256[] owners, uint8 reqConfirms, uint32 lifetime) public {
+        // Allow to deploy from other smart contracts
+        if (msg.sender.value == 0) {
+            require(msg.pubkey() == tvm.pubkey(), 100);
+        }
+        require(lifetime > 0, 123);
         require(owners.length > 0 && owners.length <= MAX_CUSTODIAN_COUNT, 117);
         tvm.accept();
-        _initialize(owners, reqConfirms);
+        _initialize(owners, reqConfirms, lifetime);
     }
 
     /*
@@ -214,14 +244,14 @@ contract MultisigWallet {
         return custodianIndex.get();
     }
 
-    /// @dev Generates new id for object.
+    /// @dev Generates new id for transaction.
     function _generateId() inline private pure returns (uint64) {
         return (uint64(now) << 32) | (tx.timestamp & 0xFFFFFFFF);
     }
 
     /// @dev Returns timestamp after which transactions are treated as expired.
-    function _getExpirationBound() inline private pure returns (uint64) {
-        return (uint64(now) - EXPIRATION_TIME) << 32;
+    function _getExpirationBound() inline private view returns (uint64) {
+        return (uint64(now) - m_lifetime) << 32;
     }
 
     /// @dev Returns transfer flags according to input value and `allBalance` flag.
@@ -241,7 +271,7 @@ contract MultisigWallet {
     /// @dev Allows custodian if she is the only owner of multisig to transfer funds with minimal fees.
     /// @param dest Transfer target address.
     /// @param value Amount of funds to transfer.
-    /// @param bounce Bounce flag. Set true if need to transfer funds to existing account;
+    /// @param bounce Bounce flag. Set true to transfer funds to existing account,
     /// set false to create new account.
     /// @param flags `sendmsg` flags.
     /// @param payload Tree of cells used as body of outbound internal message.
@@ -250,29 +280,30 @@ contract MultisigWallet {
         uint128 value,
         bool bounce,
         uint8 flags,
-        TvmCell payload) public view
-    {
+        TvmCell payload
+    ) public view {
         require(m_custodianCount == 1, 108);
         require(msg.pubkey() == m_ownerKey, 100);
         tvm.accept();
         dest.transfer(value, bounce, flags | FLAG_IGNORE_ERRORS, payload);
     }
 
-    /// @dev Allows custodian to submit and confirm new transaction.
+    /// @dev Allows custodians to submit new transaction.
     /// @param dest Transfer target address.
-    /// @param value Nanograms value to transfer.
-    /// @param bounce Bounce flag. Set true if need to transfer grams to existing account; set false to create new account.
+    /// @param value Nanoevers value to transfer.
+    /// @param bounce Bounce flag. Set true if need to transfer evers to existing account; set false to create new account.
     /// @param allBalance Set true if need to transfer all remaining balance.
     /// @param payload Tree of cells used as body of outbound internal message.
+    /// @param stateInit Smart contract image to deploy with internal message.
     /// @return transId Transaction ID.
     function submitTransaction(
         address dest,
         uint128 value,
         bool bounce,
         bool allBalance,
-        TvmCell payload)
-    public returns (uint64 transId)
-    {
+        TvmCell payload,
+        optional(TvmCell) stateInit
+    ) public returns (uint64 transId) {
         uint256 senderKey = msg.pubkey();
         uint8 index = _findCustodian(senderKey);
         _removeExpiredTransactions();
@@ -280,20 +311,26 @@ contract MultisigWallet {
         tvm.accept();
 
         (uint8 flags, uint128 realValue) = _getSendFlags(value, allBalance);
-        uint8 requiredSigns = m_defaultRequiredConfirmations;
 
-        if (requiredSigns <= 1) {
-            dest.transfer(realValue, bounce, flags, payload);
-            return 0;
-        } else {
-            m_requestsMask = _incMaskValue(m_requestsMask, index);
-            uint64 trId = _generateId();
-            Transaction txn = Transaction(trId, 0/*mask*/, requiredSigns, 0/*signsReceived*/,
-                senderKey, index, dest, realValue, flags, payload, bounce);
+        m_requestsMask = _incMaskValue(m_requestsMask, index);
+        uint64 trId = _generateId();
+        Transaction txn = Transaction({
+            id: trId,
+            confirmationsMask: 0,
+            signsRequired: m_defaultRequiredConfirmations,
+            signsReceived: 0,
+            creator: senderKey,
+            index: index,
+            dest: dest, 
+            value: realValue,
+            sendFlags: flags,
+            payload: payload,
+            bounce: bounce,
+            stateInit: stateInit
+        });
 
-            _confirmTransaction(trId, txn, index);
-            return trId;
-        }
+        _confirmTransaction(txn, index);
+        return trId;
     }
 
     /// @dev Allows custodian to confirm a transaction.
@@ -306,7 +343,7 @@ contract MultisigWallet {
         Transaction txn = txnOpt.get();
         require(!_isConfirmed(txn.confirmationsMask, index), 103);
         tvm.accept();
-        _confirmTransaction(transactionId, txn, index);
+        _confirmTransaction(txn, index);
     }
 
     /*
@@ -314,27 +351,40 @@ contract MultisigWallet {
      */
 
     /// @dev Confirms transaction by custodian with defined index.
-    /// @param transactionId Transaction id to confirm.
     /// @param txn Transaction object to confirm.
-    /// @param custodianIndex Index of custodian.
+    /// @param custodianIndex Ccustodian index which confirms transaction.
     function _confirmTransaction(
-        uint64 transactionId,
         Transaction txn,
         uint8 custodianIndex
     ) inline private {
         if ((txn.signsReceived + 1) >= txn.signsRequired) {
-            txn.dest.transfer(txn.value, txn.bounce, txn.sendFlags, txn.payload);
+            if (txn.stateInit.hasValue()) {
+                txn.dest.transfer({
+                    value: txn.value,
+                    bounce: txn.bounce,
+                    flag: txn.sendFlags,
+                    body: txn.payload,
+                    stateInit: txn.stateInit.get()
+                });
+            } else {
+                txn.dest.transfer({
+                    value: txn.value,
+                    bounce: txn.bounce,
+                    flag: txn.sendFlags,
+                    body: txn.payload
+                });
+            }
             m_requestsMask = _decMaskValue(m_requestsMask, txn.index);
-            delete m_transactions[transactionId];
+            delete m_transactions[txn.id];
         } else {
             txn.confirmationsMask = _setConfirmed(txn.confirmationsMask, custodianIndex);
             txn.signsReceived++;
-            m_transactions[transactionId] = txn;
+            m_transactions[txn.id] = txn;
         }
     }
 
     /// @dev Removes expired transactions from storage.
-    function _removeExpiredTransactions() inline private {
+    function _removeExpiredTransactions() private {
         uint64 marker = _getExpirationBound();
         if (m_transactions.empty()) return;
 
@@ -388,7 +438,7 @@ contract MultisigWallet {
 
         maxQueuedTransactions = MAX_QUEUED_REQUESTS;
         maxCustodianCount = MAX_CUSTODIAN_COUNT;
-        expirationTime = EXPIRATION_TIME;
+        expirationTime = m_lifetime;
         minValue = 0;
         requiredTxnConfirms = m_defaultRequiredConfirmations;
         requiredUpdConfirms = m_requiredVotes;
@@ -417,14 +467,6 @@ contract MultisigWallet {
         }
     }
 
-    /// @dev Get-method that returns submitted transaction ids.
-    /// @return ids Array of transaction ids.
-    function getTransactionIds() public view returns (uint64[] ids) {
-        for ((uint64 trId, ): m_transactions) {
-            ids.push(trId);
-        }
-    }
-
     /// @dev Helper structure to return information about custodian.
     /// Used in getCustodians().
     struct CustodianInfo {
@@ -445,25 +487,48 @@ contract MultisigWallet {
      */
     
     /// @dev Allows to submit update request. New custodians can be supplied.
-    /// @param codeHash Representation hash of code's tree of cells.
-    /// @param owners Array with new custodians.
-    /// @param reqConfirms Default number of confirmations required for executing transaction.
+    /// @param codeHash New wallet code hash.
+    /// @param owners New wallet custodians (array of pubkeys).
+    /// @param reqConfirms New number of confirmations required for executing transaction.
+    /// @param lifetime New unconfirmed transaction lifetime, in seconds.
     /// @return updateId Id of submitted update request.
-    function submitUpdate(uint256 codeHash, uint256[] owners, uint8 reqConfirms) public 
-        returns (uint64 updateId) 
-    {
+    function submitUpdate(
+        optional(uint256) codeHash,
+        optional(uint256[]) owners,
+        optional(uint8) reqConfirms,
+        optional(uint64) lifetime
+    ) public returns (uint64 updateId) {
         uint256 sender = msg.pubkey();
         uint8 index = _findCustodian(sender);
-        // TODO check reqConfirms
-        require(owners.length > 0 && owners.length <= MAX_CUSTODIAN_COUNT, 117);
+        if (codeHash.hasValue()) {
+            require(owners.hasValue(), 124);
+        }
+        if (owners.hasValue()) {
+            uint newOwnerCount = owners.get().length;
+            require(newOwnerCount > 0 && newOwnerCount <= MAX_CUSTODIAN_COUNT, 117);
+        }
         _removeExpiredUpdateRequests();
         require(!_isSubmitted(m_updateRequestsMask, index), 113);
         tvm.accept();
-
+        
+        if (codeHash.hasValue()) {
+            if (codeHash.get() == tvm.hash(tvm.code())) {
+                codeHash.reset();
+            }
+        }
         m_updateRequestsMask = _setSubmitted(m_updateRequestsMask, index);
         updateId = _generateId();
-        m_updateRequests[updateId] = UpdateRequest(updateId, index, 0/*signs*/, 0/*mask*/, 
-            sender, codeHash, owners, reqConfirms);
+        m_updateRequests[updateId] = UpdateRequest({
+            id: updateId,
+            index: index,
+            signs: 0,
+            confirmationsMask: 0,
+            creator: sender,
+            codeHash: codeHash,
+            custodians: owners, 
+            reqConfirms: reqConfirms, 
+            lifetime: lifetime
+        });
         _confirmUpdate(updateId, index);
     }
 
@@ -484,21 +549,38 @@ contract MultisigWallet {
     /// @dev Allows to execute confirmed update request.
     /// @param updateId Id of update request.
     /// @param code Root cell of tree of cells with contract code.
-    function executeUpdate(uint64 updateId, TvmCell code) public {
+    function executeUpdate(uint64 updateId, optional(TvmCell) code) public {
         require(m_custodians.exists(msg.pubkey()), 100);
         _removeExpiredUpdateRequests();
         optional(UpdateRequest) requestOpt = m_updateRequests.fetch(updateId);
         require(requestOpt.hasValue(), 115);
         UpdateRequest request = requestOpt.get();
-        require(tvm.hash(code) == request.codeHash, 119);
+        if (request.codeHash.hasValue()) {
+            require(code.hasValue(), 119);
+            require(tvm.hash(code.get()) == request.codeHash.get(), 119);
+        } else {
+            require(!code.hasValue(), 125);
+        }
         require(request.signs >= m_requiredVotes, 120);
+        
         tvm.accept();
 
         _deleteUpdateRequest(updateId, request.index);
-
-        tvm.setcode(code);
-        tvm.setCurrentCode(code);
-        onCodeUpgrade(request.custodians, request.reqConfirms);
+        if (request.codeHash.hasValue()) {
+            // Message replay protection in case of exceptions 
+            // in onCodeUpgrade of dereferences of optional values.
+            tvm.commit();
+            // Use new or current number of confirmations
+            uint8 newReqConfirms = request.reqConfirms.hasValue() ?
+                request.reqConfirms.get() :
+                m_defaultRequiredConfirmations;
+            TvmCell newcode = code.get();
+            tvm.setcode(newcode);
+            tvm.setCurrentCode(newcode);
+            onCodeUpgrade(request.custodians.get(), newReqConfirms);
+        } else {
+            _initialize(request.custodians, request.reqConfirms, request.lifetime);
+        }
     }
 
     /// @dev Get-method to query all pending update requests.
@@ -514,7 +596,7 @@ contract MultisigWallet {
     /// @dev Worker function after code update.
     function onCodeUpgrade(uint256[] newOwners, uint8 reqConfirms) private {
         tvm.resetStorage();
-        _initialize(newOwners, reqConfirms);
+        _initialize(newOwners, reqConfirms, DEFAULT_LIFETIME);
     }
     
     /*

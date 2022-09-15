@@ -1,15 +1,15 @@
 # Multisignature Wallet 2.0
 
-**Status**: work in progress
+**Status**: on review
 
 ## Prerequisites
 
-- TON-Solidity Compiler 0.63.0
+- [TON-Solidity Compiler 0.64.0](https://github.com/tonlabs/TON-Solidity-Compiler/tree/0.64.0)
 
-- tvm_linker 0.15.55
+- tvm_linker 0.15.70
 
-## How to build
+## How to build with [sold](https://github.com/tonlabs/TON-Solidity-Compiler/tree/0.64.0/sold)
 
-    everdev sol compile multisig2.sol
+    sold multisig2.sol
 
 NOTE: you can compile and link multisig manually using required compiler & linker versions.
