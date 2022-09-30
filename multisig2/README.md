@@ -6,6 +6,8 @@ There are two versions of multisig wallet:
 
 - [SafeMultisig](./build/SafeMultisig.tvc) - multisignature wallet without upgrade feature;
 
+    code hash: `1974b06efa89ba22d1962d06efaef6d00751b7cdc3156c151bb0cc1c504e7e8c`
+
 - SetcodeMultisig - multisignature wallet with upgrade feature.
 
 **IMPORTANT: tvc image for SetcodeMultisig is not production ready. Dont use it in production environment.**
