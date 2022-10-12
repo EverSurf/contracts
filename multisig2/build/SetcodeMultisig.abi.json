@@ -101,7 +101,7 @@
 				{"name":"codeHash","type":"optional(uint256)"},
 				{"name":"owners","type":"optional(uint256[])"},
 				{"name":"reqConfirms","type":"optional(uint8)"},
-				{"name":"lifetime","type":"optional(uint64)"}
+				{"name":"lifetime","type":"optional(uint32)"}
 			],
 			"outputs": [
 				{"name":"updateId","type":"uint64"}
@@ -129,7 +129,7 @@
 			"inputs": [
 			],
 			"outputs": [
-				{"components":[{"name":"id","type":"uint64"},{"name":"index","type":"uint8"},{"name":"signs","type":"uint8"},{"name":"confirmationsMask","type":"uint32"},{"name":"creator","type":"uint256"},{"name":"codeHash","type":"optional(uint256)"},{"name":"custodians","type":"optional(uint256[])"},{"name":"reqConfirms","type":"optional(uint8)"},{"name":"lifetime","type":"optional(uint64)"}],"name":"updates","type":"tuple[]"}
+				{"components":[{"name":"id","type":"uint64"},{"name":"index","type":"uint8"},{"name":"signs","type":"uint8"},{"name":"confirmationsMask","type":"uint32"},{"name":"creator","type":"uint256"},{"name":"codeHash","type":"optional(uint256)"},{"name":"custodians","type":"optional(uint256[])"},{"name":"reqConfirms","type":"optional(uint8)"},{"name":"lifetime","type":"optional(uint32)"}],"name":"updates","type":"tuple[]"}
 			]
 		}
 	],
@@ -146,10 +146,10 @@
 		{"components":[{"name":"id","type":"uint64"},{"name":"confirmationsMask","type":"uint32"},{"name":"signsRequired","type":"uint8"},{"name":"signsReceived","type":"uint8"},{"name":"creator","type":"uint256"},{"name":"index","type":"uint8"},{"name":"dest","type":"address"},{"name":"value","type":"uint128"},{"name":"sendFlags","type":"uint16"},{"name":"payload","type":"cell"},{"name":"bounce","type":"bool"},{"name":"stateInit","type":"optional(cell)"}],"name":"m_transactions","type":"map(uint64,tuple)"},
 		{"name":"m_custodians","type":"map(uint256,uint8)"},
 		{"name":"m_custodianCount","type":"uint8"},
-		{"components":[{"name":"id","type":"uint64"},{"name":"index","type":"uint8"},{"name":"signs","type":"uint8"},{"name":"confirmationsMask","type":"uint32"},{"name":"creator","type":"uint256"},{"name":"codeHash","type":"optional(uint256)"},{"name":"custodians","type":"optional(uint256[])"},{"name":"reqConfirms","type":"optional(uint8)"},{"name":"lifetime","type":"optional(uint64)"}],"name":"m_updateRequests","type":"map(uint64,tuple)"},
+		{"components":[{"name":"id","type":"uint64"},{"name":"index","type":"uint8"},{"name":"signs","type":"uint8"},{"name":"confirmationsMask","type":"uint32"},{"name":"creator","type":"uint256"},{"name":"codeHash","type":"optional(uint256)"},{"name":"custodians","type":"optional(uint256[])"},{"name":"reqConfirms","type":"optional(uint8)"},{"name":"lifetime","type":"optional(uint32)"}],"name":"m_updateRequests","type":"map(uint64,tuple)"},
 		{"name":"m_updateRequestsMask","type":"uint32"},
 		{"name":"m_requiredVotes","type":"uint8"},
 		{"name":"m_defaultRequiredConfirmations","type":"uint8"},
-		{"name":"m_lifetime","type":"uint64"}
+		{"name":"m_lifetime","type":"uint32"}
 	]
 }

@@ -15,7 +15,7 @@
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-pragma ton-solidity ^0.64.0;
+pragma ton-solidity >=0.64.0;
 pragma AbiHeader expire;
 pragma AbiHeader pubkey;
 pragma AbiHeader time;
@@ -74,14 +74,15 @@ contract MultisigWallet {
         // New number of confirmations required to execute transaction
         optional(uint8) reqConfirms;
         // New unconfirmed transaction lifetime in seconds.
-        optional(uint64) lifetime;
+        optional(uint32) lifetime;
     }
 
     /*
      *  Constants
      */
     uint8   constant MAX_QUEUED_REQUESTS = 5;
-    uint64  constant DEFAULT_LIFETIME = 3600; // lifetime is 1 hour
+    uint32  constant DEFAULT_LIFETIME = 3600; // lifetime is 1 hour
+    uint32  constant MIN_LIFETIME = 10; // 10 secs
     uint8   constant MAX_CUSTODIAN_COUNT = 32;
     uint    constant MAX_CLEANUP_TXNS = 40;
 
@@ -116,7 +117,7 @@ contract MultisigWallet {
     // Minimal number of confirmations needed to execute transaction.
     uint8 m_defaultRequiredConfirmations;
     // Unconfirmed transaction lifetime, in seconds.
-    uint64 m_lifetime;
+    uint32 m_lifetime;
 
     /*
     Exception codes:
@@ -134,9 +135,10 @@ contract MultisigWallet {
     120 - update request is not confirmed;
     121 - payload size is too big;
     122 - object is expired;
-    123 - invalid lifetime;
     124 - new custodians are not defined; 
     125 - `code` argument should be null;
+    126 - in case of internal deploy: only 1 custodian is allowed;
+    127 - in case of internal deploy: custodian must be equal to deployer;
     */
 
     /*
@@ -147,7 +149,7 @@ contract MultisigWallet {
     function _initialize(
         optional(uint256[]) ownersOpt,
         optional(uint8) reqConfirmsOpt,
-        optional(uint64) lifetimeOpt
+        optional(uint32) lifetimeOpt
     ) inline private {
         if (ownersOpt.hasValue()) {
             uint8 ownerCount = 0;
@@ -171,11 +173,16 @@ contract MultisigWallet {
         m_requiredVotes = (m_custodianCount <= 2) ? m_custodianCount : ((m_custodianCount * 2 + 1) / 3);
 
         if (lifetimeOpt.hasValue()) {
-            uint64 newLifetime = lifetimeOpt.get();
+            uint32 newLifetime = lifetimeOpt.get();
             if (newLifetime == 0) {
                 newLifetime = DEFAULT_LIFETIME;
+            } else {
+                newLifetime = math.max(
+                    uint32(m_custodianCount) * MIN_LIFETIME,
+                    math.min(newLifetime, uint32(now & 0xFFFFFFFF))
+                );
             }
-            m_lifetime =  newLifetime;
+            m_lifetime = newLifetime;
         }
     }
 
@@ -184,12 +191,17 @@ contract MultisigWallet {
     /// @param reqConfirms Minimal number of confirmations required for executing transaction.
     /// @param lifetime Unconfirmed transaction lifetime, in seconds.
     constructor(uint256[] owners, uint8 reqConfirms, uint32 lifetime) public {
+        require(owners.length > 0 && owners.length <= MAX_CUSTODIAN_COUNT, 117);
         // Allow to deploy from other smart contracts
         if (msg.sender.value == 0) {
+            // external deploy
             require(msg.pubkey() == tvm.pubkey(), 100);
+        } else {
+            // internal deploy, 
+            // check security condition
+            require(owners.length == 1, 126);
+            require(owners[0] == tvm.pubkey(), 127);
         }
-        require(lifetime > 0, 123);
-        require(owners.length > 0 && owners.length <= MAX_CUSTODIAN_COUNT, 117);
         tvm.accept();
         _initialize(owners, reqConfirms, lifetime);
     }
@@ -233,10 +245,6 @@ contract MultisigWallet {
         return mask;
     }
 
-    function _setSubmitted(uint32 mask, uint8 custodianIndex) inline private pure returns (uint32) {
-        return _setConfirmed(mask, custodianIndex);
-    }
-
     /// @dev Checks that custodian with supplied public key exists in custodian set.
     function _findCustodian(uint256 senderKey) inline private view returns (uint8) {
         optional(uint8) custodianIndex = m_custodians.fetch(senderKey);
@@ -251,7 +259,7 @@ contract MultisigWallet {
 
     /// @dev Returns timestamp after which transactions are treated as expired.
     function _getExpirationBound() inline private view returns (uint64) {
-        return (uint64(now) - m_lifetime) << 32;
+        return (uint64(now) - uint64(m_lifetime)) << 32;
     }
 
     /// @dev Returns transfer flags according to input value and `allBalance` flag.
@@ -417,7 +425,7 @@ contract MultisigWallet {
     
     /// @dev Helper get-method for checking if custodian confirmation bit is set.
     /// @return confirmed True if confirmation bit is set.
-    function isConfirmed(uint32 mask, uint8 index) public pure returns (bool confirmed) {
+    function isConfirmed(uint32 mask, uint8 index) external pure returns (bool confirmed) {
         confirmed = _isConfirmed(mask, index);
     }
 
@@ -428,7 +436,7 @@ contract MultisigWallet {
     /// @return minValue The minimum value allowed to transfer in one transaction.
     /// @return requiredTxnConfirms The minimum number of confirmations required to execute transaction.
     /// @return requiredUpdConfirms The minimum number of confirmations required to update wallet code.
-    function getParameters() public view
+    function getParameters() external view
         returns (uint8 maxQueuedTransactions,
                 uint8 maxCustodianCount,
                 uint64 expirationTime,
@@ -447,7 +455,7 @@ contract MultisigWallet {
     /// @dev Get-method that returns transaction info by id.
     /// @return trans Transaction structure.
     /// Throws exception if transaction does not exist.
-    function getTransaction(uint64 transactionId) public view
+    function getTransaction(uint64 transactionId) external view
         returns (Transaction trans) {
         optional(Transaction) txnOpt = m_transactions.fetch(transactionId);
         require(txnOpt.hasValue(), 102);
@@ -457,7 +465,7 @@ contract MultisigWallet {
     /// @dev Get-method that returns array of pending transactions.
     /// Returns not expired transactions only.
     /// @return transactions Array of queued transactions.
-    function getTransactions() public view returns (Transaction[] transactions) {
+    function getTransactions() external view returns (Transaction[] transactions) {
         uint64 bound = _getExpirationBound();
         for ((uint64 id, Transaction txn): m_transactions) {
             // returns only not expired transactions
@@ -476,7 +484,7 @@ contract MultisigWallet {
 
     /// @dev Get-method that returns info about wallet custodians.
     /// @return custodians Array of custodians.
-    function getCustodians() public view returns (CustodianInfo[] custodians) {
+    function getCustodians() external view returns (CustodianInfo[] custodians) {
         for ((uint256 key, uint8 index): m_custodians) {
             custodians.push(CustodianInfo(index, key));
         }
@@ -496,7 +504,7 @@ contract MultisigWallet {
         optional(uint256) codeHash,
         optional(uint256[]) owners,
         optional(uint8) reqConfirms,
-        optional(uint64) lifetime
+        optional(uint32) lifetime
     ) public returns (uint64 updateId) {
         uint256 sender = msg.pubkey();
         uint8 index = _findCustodian(sender);
@@ -516,7 +524,7 @@ contract MultisigWallet {
                 codeHash.reset();
             }
         }
-        m_updateRequestsMask = _setSubmitted(m_updateRequestsMask, index);
+        m_updateRequestsMask = _setConfirmed(m_updateRequestsMask, index);
         updateId = _generateId();
         m_updateRequests[updateId] = UpdateRequest({
             id: updateId,
@@ -568,7 +576,7 @@ contract MultisigWallet {
         _deleteUpdateRequest(updateId, request.index);
         if (request.codeHash.hasValue()) {
             // Message replay protection in case of exceptions 
-            // in onCodeUpgrade of dereferences of optional values.
+            // in onCodeUpgrade or dereference of optional values.
             tvm.commit();
             // Use new or current number of confirmations
             uint8 newReqConfirms = request.reqConfirms.hasValue() ?
@@ -584,7 +592,7 @@ contract MultisigWallet {
     }
 
     /// @dev Get-method to query all pending update requests.
-    function getUpdateRequests() public view returns (UpdateRequest[] updates) {
+    function getUpdateRequests() external view returns (UpdateRequest[] updates) {
         uint64 bound = _getExpirationBound();
         for ((uint64 updateId, UpdateRequest req): m_updateRequests) {
             if (updateId > bound) {
@@ -640,5 +648,4 @@ contract MultisigWallet {
         m_updateRequestsMask &= ~(uint32(1) << index);
         delete m_updateRequests[updateId];
     }
-
 }

@@ -109,6 +109,6 @@
 		{"name":"m_custodians","type":"map(uint256,uint8)"},
 		{"name":"m_custodianCount","type":"uint8"},
 		{"name":"m_defaultRequiredConfirmations","type":"uint8"},
-		{"name":"m_lifetime","type":"uint64"}
+		{"name":"m_lifetime","type":"uint32"}
 	]
 }
