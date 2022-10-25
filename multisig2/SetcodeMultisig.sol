@@ -15,7 +15,7 @@
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-pragma ton-solidity >=0.64.0;
+pragma ton-solidity >=0.66.0;
 pragma AbiHeader expire;
 pragma AbiHeader pubkey;
 pragma AbiHeader time;
@@ -138,7 +138,7 @@ contract MultisigWallet {
     124 - new custodians are not defined; 
     125 - `code` argument should be null;
     126 - in case of internal deploy: only 1 custodian is allowed;
-    127 - in case of internal deploy: custodian must be equal to deployer;
+    127 - in case of internal deploy: custodian pubkey must be equal to tvm.pubkey;
     */
 
     /*
@@ -148,12 +148,15 @@ contract MultisigWallet {
     /// @dev Internal function called from constructor to initialize custodians.
     function _initialize(
         optional(uint256[]) ownersOpt,
-        optional(uint8) reqConfirmsOpt,
-        optional(uint32) lifetimeOpt
+        uint8 reqConfirms,
+        uint32 lifetime
     ) inline private {
         if (ownersOpt.hasValue()) {
             uint8 ownerCount = 0;
             uint256[] owners = ownersOpt.get();
+            if (owners.length == 0) {
+                owners.push(tvm.pubkey());
+            }
             m_ownerKey = owners[0];
             uint256 len = owners.length;
             delete m_custodians;
@@ -166,23 +169,15 @@ contract MultisigWallet {
             m_custodianCount = ownerCount;
         }
 
-        if (reqConfirmsOpt.hasValue()) {
-            m_defaultRequiredConfirmations = math.min(m_custodianCount, reqConfirmsOpt.get());
-        }
+        m_defaultRequiredConfirmations = math.min(m_custodianCount, reqConfirms);
 
         m_requiredVotes = (m_custodianCount <= 2) ? m_custodianCount : ((m_custodianCount * 2 + 1) / 3);
 
-        if (lifetimeOpt.hasValue()) {
-            uint32 newLifetime = lifetimeOpt.get();
-            if (newLifetime == 0) {
-                newLifetime = DEFAULT_LIFETIME;
-            } else {
-                newLifetime = math.max(
-                    uint32(m_custodianCount) * MIN_LIFETIME,
-                    math.min(newLifetime, uint32(now & 0xFFFFFFFF))
-                );
-            }
-            m_lifetime = newLifetime;
+        uint32 minLifetime = uint32(m_custodianCount) * MIN_LIFETIME;
+        if (lifetime == 0) {
+            m_lifetime = DEFAULT_LIFETIME;
+        } else {
+            m_lifetime = math.max(minLifetime, math.min(lifetime, uint32(now & 0xFFFFFFFF)));
         }
     }
 
@@ -409,7 +404,7 @@ contract MultisigWallet {
                 delete m_transactions[trId];
                 optional(uint64, Transaction) nextTxn = m_transactions.next(trId);
                 if (nextTxn.hasValue()) {
-                    (trId, ) = nextTxn.get();
+                    (trId, txn) = nextTxn.get();
                     needCleanup = trId <= marker;
                 } else {
                     needCleanup = false;
@@ -508,9 +503,6 @@ contract MultisigWallet {
     ) public returns (uint64 updateId) {
         uint256 sender = msg.pubkey();
         uint8 index = _findCustodian(sender);
-        if (codeHash.hasValue()) {
-            require(owners.hasValue(), 124);
-        }
         if (owners.hasValue()) {
             uint newOwnerCount = owners.get().length;
             require(newOwnerCount > 0 && newOwnerCount <= MAX_CUSTODIAN_COUNT, 117);
@@ -574,21 +566,31 @@ contract MultisigWallet {
         tvm.accept();
 
         _deleteUpdateRequest(updateId, request.index);
+
+        tvm.commit();
         if (request.codeHash.hasValue()) {
-            // Message replay protection in case of exceptions 
-            // in onCodeUpgrade or dereference of optional values.
-            tvm.commit();
-            // Use new or current number of confirmations
-            uint8 newReqConfirms = request.reqConfirms.hasValue() ?
-                request.reqConfirms.get() :
-                m_defaultRequiredConfirmations;
             TvmCell newcode = code.get();
             tvm.setcode(newcode);
             tvm.setCurrentCode(newcode);
-            onCodeUpgrade(request.custodians.get(), newReqConfirms);
-        } else {
-            _initialize(request.custodians, request.reqConfirms, request.lifetime);
         }
+        
+        TvmBuilder data;
+        if (request.custodians.hasValue()) {
+            data.store(true, request.custodians.get());
+        } else {
+            data.store(false, m_custodians, m_custodianCount, m_ownerKey);
+        }
+        if (request.reqConfirms.hasValue()) {
+            data.store(request.reqConfirms.get());
+        } else {
+            data.store(m_defaultRequiredConfirmations);
+        }
+        if (request.lifetime.hasValue()) {
+            data.store(request.lifetime.get());
+        } else {
+            data.store(m_lifetime);
+        }
+        onCodeUpgrade(data.toCell());
     }
 
     /// @dev Get-method to query all pending update requests.
@@ -601,10 +603,27 @@ contract MultisigWallet {
         }
     }
 
-    /// @dev Worker function after code update.
-    function onCodeUpgrade(uint256[] newOwners, uint8 reqConfirms) private {
+    /// @dev Old handler after code update. For compatibility with old msig.
+    function onCodeUpgrade(uint256[] newOwners, uint8 reqConfirms) private functionID(2) {
         tvm.resetStorage();
-        _initialize(newOwners, reqConfirms, DEFAULT_LIFETIME);
+        _initialize(newOwners, reqConfirms, 0);
+    }
+
+    /// @dev Handler after code update.
+    function onCodeUpgrade(TvmCell data) private functionID(3) {
+        tvm.resetStorage();
+        optional(uint256[]) owners;
+        TvmSlice slice = data.toSlice();
+        bool ownersAsArray = slice.decode(bool);
+        if (ownersAsArray) {
+            owners = slice.decode(uint256[]);
+        } else {
+            (m_custodians, m_custodianCount, m_ownerKey) = slice.decode(
+                mapping(uint256 => uint8), uint8, uint256);
+        }
+
+        (uint8 reqConfirms, uint32 lifetime) = slice.decode(uint8, uint32);
+        _initialize(owners, reqConfirms, lifetime);
     }
     
     /*

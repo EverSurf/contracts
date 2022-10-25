@@ -15,7 +15,7 @@
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-pragma ton-solidity >=0.64.0;
+pragma ton-solidity >=0.66.0;
 pragma AbiHeader expire;
 pragma AbiHeader pubkey;
 pragma AbiHeader time;
@@ -109,7 +109,7 @@ contract MultisigWallet {
     124 - new custodians are not defined; 
     125 - `code` argument should be null;
     126 - in case of internal deploy: only 1 custodian is allowed;
-    127 - in case of internal deploy: custodian must be equal to deployer;
+    127 - in case of internal deploy: custodian pubkey must be equal to tvm.pubkey;
     */
 
     /*
@@ -119,12 +119,15 @@ contract MultisigWallet {
     /// @dev Internal function called from constructor to initialize custodians.
     function _initialize(
         optional(uint256[]) ownersOpt,
-        optional(uint8) reqConfirmsOpt,
-        optional(uint32) lifetimeOpt
+        uint8 reqConfirms,
+        uint32 lifetime
     ) inline private {
         if (ownersOpt.hasValue()) {
             uint8 ownerCount = 0;
             uint256[] owners = ownersOpt.get();
+            if (owners.length == 0) {
+                owners.push(tvm.pubkey());
+            }
             m_ownerKey = owners[0];
             uint256 len = owners.length;
             delete m_custodians;
@@ -137,21 +140,13 @@ contract MultisigWallet {
             m_custodianCount = ownerCount;
         }
 
-        if (reqConfirmsOpt.hasValue()) {
-            m_defaultRequiredConfirmations = math.min(m_custodianCount, reqConfirmsOpt.get());
-        }
+        m_defaultRequiredConfirmations = math.min(m_custodianCount, reqConfirms);
 
-        if (lifetimeOpt.hasValue()) {
-            uint32 newLifetime = lifetimeOpt.get();
-            if (newLifetime == 0) {
-                newLifetime = DEFAULT_LIFETIME;
-            } else {
-                newLifetime = math.max(
-                    uint32(m_custodianCount) * MIN_LIFETIME,
-                    math.min(newLifetime, uint32(now & 0xFFFFFFFF))
-                );
-            }
-            m_lifetime = newLifetime;
+        uint32 minLifetime = uint32(m_custodianCount) * MIN_LIFETIME;
+        if (lifetime == 0) {
+            m_lifetime = DEFAULT_LIFETIME;
+        } else {
+            m_lifetime = math.max(minLifetime, math.min(lifetime, uint32(now & 0xFFFFFFFF)));
         }
     }
 
@@ -378,7 +373,7 @@ contract MultisigWallet {
                 delete m_transactions[trId];
                 optional(uint64, Transaction) nextTxn = m_transactions.next(trId);
                 if (nextTxn.hasValue()) {
-                    (trId, ) = nextTxn.get();
+                    (trId, txn) = nextTxn.get();
                     needCleanup = trId <= marker;
                 } else {
                     needCleanup = false;
