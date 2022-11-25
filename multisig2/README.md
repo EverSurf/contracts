@@ -1,6 +1,6 @@
 # Multisignature Wallet 2.0
 
-**Status**: completed, release in progress
+**Status**: Released
 
 There are two versions of multisig wallet:
 
