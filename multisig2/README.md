@@ -2,7 +2,7 @@
 
 **Status**: Released
 
-There are two versions of multisig wallet:
+There are 3 versions of multisig wallet:
 
 - [SafeMultisig](./build/SafeMultisig.tvc) - multisignature wallet without upgrade feature;
 
@@ -14,9 +14,11 @@ There are two versions of multisig wallet:
 
     **IMPORTANT**: don't use SetcodeMultisig to update old mulsitig wallet.
 
-- UpdateMultisig - copy of setcode multisignature wallet but with ability to update old [setcode](https://github.com/tonlabs/ton-labs-contracts/tree/master/solidity/setcodemultisig)/[surf](https://github.com/EverSurf/contracts/tree/main/surfmultisig) multisig.
+- [UpdateMultisig](./build/UpdateMultisig.tvc) - copy of setcode multisignature wallet but with ability to update old [setcode](https://github.com/tonlabs/ton-labs-contracts/tree/master/solidity/setcodemultisig)/[surf](https://github.com/EverSurf/contracts/tree/main/surfmultisig) multisig.
 
-    run `create_updmsig.sh` to generate UpdateMultisig.sol from SetcodeMultisig.sol.
+    code hash: `ea5f076ec0a49db435eb74fbef888a2fe7d470787c14210d923f487394f53245`
+
+    NOTE: run `create_updmsig.sh` to generate UpdateMultisig.sol from SetcodeMultisig.sol.
 
 ## How to build SafeMultisig and SetcodeMultisig
 
