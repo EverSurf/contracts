@@ -1,5 +1,5 @@
 pragma ton-solidity >= 0.57.0;
-import "../libraries/Structs.sol";
+import "https://raw.githubusercontent.com/EverSurf/contracts/main/swapper/libraries/Structs.sol";
 
 struct GlobalParams {
     address wtonVault;
