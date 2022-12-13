@@ -173,7 +173,11 @@ contract MsigDebot is Debot, Upgradable, Transferable, Utility {
 
     function checkWalletHash(uint256 code_hash) public {
         // setcode msig
-        if (code_hash != 0xd66d198766abdbe1253f3415826c946c371f5112552408625aeb0b31e0ef2df3 ) {
+        if (code_hash != 0xd66d198766abdbe1253f3415826c946c371f5112552408625aeb0b31e0ef2df3 ||
+            // safe msig
+            code_hash != 0x7377910a1b5d0c8073ba02523e139c7f42f9772fe0076a4d0b211ccec071eb7a ||
+            // update msig
+            code_hash != 0xea5f076ec0a49db435eb74fbef888a2fe7d470787c14210d923f487394f53245) {
             _start();
             return;
         }
