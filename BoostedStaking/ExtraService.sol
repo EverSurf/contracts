@@ -15,7 +15,7 @@
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-pragma ton-solidity >= 0.47.0;
+pragma ton-solidity = 0.47.0;
 pragma AbiHeader expire;
 pragma AbiHeader time;
 import "../common/Upgradable.sol";
