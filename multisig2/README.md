@@ -1,5 +1,10 @@
 # Multisignature Wallet 2.0
 
+**WARMING**: multisig source code and build artifacts were cloned to a separate repository:
+
+[Multisig 2.0 repository](https://github.com/EverSurf/multisig2)
+
+
 **Status**: Released
 
 There are 3 versions of multisig wallet:
