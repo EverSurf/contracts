@@ -19,6 +19,7 @@ pragma ton-solidity >=0.66.0;
 pragma AbiHeader expire;
 pragma AbiHeader pubkey;
 pragma AbiHeader time;
+pragma ignoreIntOverflow;
 
 /// @title Multisignature wallet 2.0 with setcode.
 /// @author Ever Surf
@@ -309,12 +310,15 @@ contract MultisigWallet {
     ) public returns (uint64 transId) {
         uint256 senderKey = msg.pubkey();
         uint8 index = _findCustodian(senderKey);
+        if (m_custodianCount > 1) {
+            (uint cells, uint bits, ) = payload.dataSize(16);
+            require(cells <= 16 && bits <= 16368, 121);
+        }
         _removeExpiredTransactions();
         require(_getMaskValue(m_requestsMask, index) < MAX_QUEUED_REQUESTS, 113);
         tvm.accept();
 
         (uint8 flags, uint128 realValue) = _getSendFlags(value, allBalance);
-
         m_requestsMask = _incMaskValue(m_requestsMask, index);
         uint64 trId = _generateId();
         Transaction txn = Transaction({
@@ -332,7 +336,27 @@ contract MultisigWallet {
             stateInit: stateInit
         });
 
-        _confirmTransaction(txn, index);
+        optional(Transaction) txnOpt = _confirmTransaction(txn, index);
+        if (txnOpt.hasValue()) {
+            Transaction updTxn = txnOpt.get();
+            // Zero statinit and save txn to persistent storage.
+            // Then if stateinit is present, commit multisig storage
+            // and check the size of stateinit BOC. If the DATASIZE
+            // cmd will exceed the gas limit then transaction will abort 
+            // and revert contract to committed state in which 
+            // saved txn has null stateinit.
+            updTxn.stateInit = null;
+            m_transactions[trId] = updTxn;
+
+            if (stateInit.hasValue()) {
+                tvm.commit();
+                // Limit the size of stateInit boc.
+                (uint cells, uint bits, ) = stateInit.get().dataSize(300);
+                require(cells <= 300 && bits < 306900, 121);
+                updTxn.stateInit = stateInit;
+                m_transactions[trId] = updTxn;
+            }
+        }
         return trId;
     }
 
@@ -346,7 +370,12 @@ contract MultisigWallet {
         Transaction txn = txnOpt.get();
         require(!_isConfirmed(txn.confirmationsMask, index), 103);
         tvm.accept();
-        _confirmTransaction(txn, index);
+        optional(Transaction) confirmedTxn = _confirmTransaction(txn, index);
+        if (confirmedTxn.hasValue()) {
+            m_transactions[transactionId] = confirmedTxn.get();
+        } else {
+            delete m_transactions[transactionId];
+        }
     }
 
     /*
@@ -359,7 +388,8 @@ contract MultisigWallet {
     function _confirmTransaction(
         Transaction txn,
         uint8 custodianIndex
-    ) inline private {
+    ) inline private returns (optional(Transaction)) {
+        optional(Transaction) updatedTxn;
         if ((txn.signsReceived + 1) >= txn.signsRequired) {
             if (txn.stateInit.hasValue()) {
                 txn.dest.transfer({
@@ -378,12 +408,13 @@ contract MultisigWallet {
                 });
             }
             m_requestsMask = _decMaskValue(m_requestsMask, txn.index);
-            delete m_transactions[txn.id];
         } else {
             txn.confirmationsMask = _setConfirmed(txn.confirmationsMask, custodianIndex);
             txn.signsReceived++;
-            m_transactions[txn.id] = txn;
+            updatedTxn = txn;
         }
+        // return null or updated txn
+        return updatedTxn;
     }
 
     /// @dev Removes expired transactions from storage.
